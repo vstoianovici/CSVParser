@@ -197,10 +197,6 @@ func runFunctionality(content []csvLine, buildsExec bool, topUsers bool, success
 	if len(content) == 0 {
 		panic(fmt.Sprintf("There are no etries in the CSV file matching the chosen time window."))
 	}
-
-	if !buildsExec && !topUsers && !successRate && !topExitCodes {
-		panic(fmt.Sprintf("No action was chosen! Please indicate an action that you would like performed!"))
-	}
 	if buildsExec {
 		fmt.Println("-------------------------------------")
 		fmt.Println("Chosen to see how many builds were executed in the relevant time window. ")
@@ -280,10 +276,10 @@ func main() {
 		panic(fmt.Sprintf("Please use the \"-file\" option to specify a CSV file!"))
 	}
 
-	// tw := timeWindow{
-	// 	startTime: *t0,
-	// 	endTime:   *t0,
-	// }
+	if !*buildsExec && !*topUsers && !*successRate && !*topExitCodes {
+		panic(fmt.Sprintf("No action was chosen! Please indicate an action that you would like performed!"))
+	}
+
 	var tw timeWindow
 	// set the time window according to cli flags
 	tw.setTimeWindow(*oldTime, *newTime, *since, *last, *unit)
