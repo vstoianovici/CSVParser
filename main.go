@@ -50,7 +50,7 @@ func (t *timeWindow) setTimeWindow(startT string, endT string, sinceT string, la
 		now := time.Now().Format(time.RFC3339)
 		fTime, err := time.Parse(time.RFC3339, now)
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("Could not parse \"current time\" %s", err))
 		}
 		fmt.Printf("Chosen a time window between %v and %v (now).\n", tSince, now)
 		t.startTime = tSince
@@ -79,11 +79,11 @@ func (t *timeWindow) setTimeWindow(startT string, endT string, sinceT string, la
 		fmt.Printf("Chosen a time window that goes back %d %s (since %s).\n", nrUnits, timeUnit, sT)
 		fTime, err := time.Parse(time.RFC3339, sT)
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("Could not parse \"from time\": %s", err))
 		}
 		current, err := time.Parse(time.RFC3339, now.Format(time.RFC3339))
 		if err != nil {
-			panic(err)
+			panic(fmt.Sprintf("Could not parse \"current time\": %s", err))
 		}
 		t.startTime = fTime
 		t.endTime = current
@@ -134,17 +134,65 @@ func sortTop5(m map[string]int, s string) {
 	}
 }
 
+func readCSVLine(pC *[]csvLine, reader *csv.Reader, tw timeWindow) bool {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("panic occured: ", r)
+			fmt.Println("Recovered")
+		}
+	}()
+	content := *pC
+	line, err := reader.Read()
+	if err == io.EOF {
+		return true
+	} else if err != nil {
+		panic(fmt.Sprintf("There was a problem reading the line! :. %s", err))
+	}
+	execEndTime, err := time.Parse(time.RFC3339, line[4])
+	if err != nil {
+		panic(fmt.Sprintf("Could not parse build time!: %s", err))
+	}
+	bAfterLowerBound := execEndTime.After(tw.startTime)
+	bBeforeHigherBound := execEndTime.Before(tw.endTime)
+	if (bAfterLowerBound && bBeforeHigherBound) || (tw.startTime == *t0 && tw.endTime == *t0) {
+		reqTime, err := time.Parse(time.RFC3339, line[2])
+		if err != nil {
+			panic(fmt.Sprintf("Could not parse \"request time\" (the 3rd field in line): %s", err))
+		}
+		execStartTime, err := time.Parse(time.RFC3339, line[3])
+		if err != nil {
+			panic(fmt.Sprintf("Could not parse \"execution time\" (the 4th field in line): %s", err))
+		}
+		bDeleted, err := strconv.ParseBool(line[5])
+		if err != nil {
+			panic(fmt.Sprintf("Could not parse \"build deleted\" (the 6th field in line): %s", err))
+		}
+		content = append(content, csvLine{
+			BuildID:            line[0],
+			User:               line[1],
+			BuildReqTime:       reqTime,
+			BuildExecStartTime: execStartTime,
+			BuildExecEndTime:   execEndTime,
+			BuildDeleted:       bDeleted,
+			BuildExitCode:      line[6],
+			BuildSize:          line[7],
+		})
+	}
+	*pC = content
+	return false
+}
+
 // create a slice to hold the structs that contain the data for each line
 func parseCSV(s string, tw timeWindow) []csvLine {
 	// open CSV file
 	file, err := os.Open(s)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("There was a problem opening the file! :. %s", err))
 	}
 	// make sure we eventually close the CSV file
 	defer func() {
 		if err = file.Close(); err != nil {
-			panic(err)
+			panic(fmt.Sprintf("There was a problem closing the file! :. %s", err))
 		}
 	}()
 	// create a reader for the file
@@ -153,41 +201,9 @@ func parseCSV(s string, tw timeWindow) []csvLine {
 
 	// if the read line is in the specified time window put it into the content slice
 	for {
-		line, err := reader.Read()
-		if err == io.EOF {
+		EOF := readCSVLine(&content, reader, tw)
+		if EOF {
 			break
-		} else if err != nil {
-			panic(err)
-		}
-		execEndTime, err := time.Parse(time.RFC3339, line[4])
-		if err != nil {
-			panic(err)
-		}
-		bAfterLowerBound := execEndTime.After(tw.startTime)
-		bBeforeHigherBound := execEndTime.Before(tw.endTime)
-		if (bAfterLowerBound && bBeforeHigherBound) || (tw.startTime == *t0 && tw.endTime == *t0) {
-			reqTime, err := time.Parse(time.RFC3339, line[2])
-			if err != nil {
-				panic(err)
-			}
-			execStartTime, err := time.Parse(time.RFC3339, line[3])
-			if err != nil {
-				panic(err)
-			}
-			bDeleted, err := strconv.ParseBool(line[5])
-			if err != nil {
-				panic(err)
-			}
-			content = append(content, csvLine{
-				BuildID:            line[0],
-				User:               line[1],
-				BuildReqTime:       reqTime,
-				BuildExecStartTime: execStartTime,
-				BuildExecEndTime:   execEndTime,
-				BuildDeleted:       bDeleted,
-				BuildExitCode:      line[6],
-				BuildSize:          line[7],
-			})
 		}
 	}
 	return content
